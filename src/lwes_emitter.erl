@@ -66,14 +66,26 @@ send (Id, AddressOrAddresses, Packet) ->
       % then fold over the list keeping track of the last error if it
       % exists
       case
-        lists:foldl (fun (Address, Accum) ->
-                       case lwes_net_udp:send (Socket, Address, Packet) of
-                         {error, Error} ->
-                           lwes_stats:increment_errors (Address),
-                           {error, Error};
-                         _ ->
-                           lwes_stats:increment_sent (Address),
-                           Accum
+        lists:foldl (fun (Target, Accum) ->
+                       case Target of
+                         {Module, Arg} when is_atom(Module) ->
+                           % TODO: I suppose it might be nicer to
+                           % try to replicate the increment_errors/increment_sent
+                           % stats tracking, but it's nothing that
+                           % couldn't be done in the specified function.
+                           Module:emit(Arg, Packet);
+
+                         % An address may be a tuple of size 2, 3, or 4.
+                         % The first element is the Ip and the second is the Port.
+                         Address ->
+                           case lwes_net_udp:send (Socket, Address, Packet) of
+                             {error, Error} ->
+                               lwes_stats:increment_errors (Address),
+                               {error, Error};
+                             _ ->
+                               lwes_stats:increment_sent (Address),
+                               Accum
+                           end
                        end
                      end,
                      ok,
